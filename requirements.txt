@@ -1,0 +1,11 @@
+apache-airflow[postgres]==2.10.3
+qdrant-client==1.12.1
+psycopg2-binary==2.9.10
+sqlalchemy==1.4.54
+langchain==0.3.12
+langchain-community==0.3.12
+langgraph==0.2.60
+chainlit==2.0.2
+beautifulsoup4==4.12.3
+requests==2.32.3
+pandas==2.2.3

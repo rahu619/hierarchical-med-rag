@@ -1,0 +1,139 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM python:3.11-slim
+
+        ENV PYTHONDONTWRITEBYTECODE=1 \
+            PYTHONUNBUFFERED=1 \
+            PIP_NO_CACHE_DIR=1
+
+        WORKDIR /workspaces/pubmed-rag
+
+        RUN apt-get update && apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            git \
+            && rm -rf /var/lib/apt/lists/*
+
+        RUN python -m pip install --upgrade pip
+    container_name: pubmed-rag-app
+    command: sleep infinity
+    volumes:
+      - ..:/workspaces/pubmed-rag:cached
+    ports:
+      - "8000:8000"
+      - "8501:8501"
+    networks:
+      - rag-network
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      airflow-standalone:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: pubmed-rag-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/6333'"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: pubmed-rag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pubmed_rag
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d pubmed_rag || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: pubmed-rag-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "ollama ps > /dev/null 2>&1 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    # Uncomment the block below to enable NVIDIA GPU acceleration.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  airflow-standalone:
+    image: apache/airflow:latest
+    container_name: pubmed-rag-airflow
+    restart: unless-stopped
+    user: "${AIRFLOW_UID:-50000}:0"
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    command: standalone
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../dags:/opt/airflow/dags
+      - ../scripts:/opt/airflow/scripts
+      - airflow_data:/opt/airflow
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/login > /dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  qdrant_data:
+  ollama_data:
+  airflow_data:
+
+networks:
+  rag-network:
+    name: rag-network
+    driver: bridge

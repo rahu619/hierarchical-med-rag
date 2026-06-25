@@ -1,0 +1,67 @@
+{
+  "name": "pubmed-rag-dev",
+  "dockerComposeFile": [
+    "docker-compose.yml"
+  ],
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [
+    8000,
+    8501,
+    6333,
+    6334,
+    5432,
+    8080,
+    11434
+  ],
+  "portsAttributes": {
+    "8000": {
+      "label": "API"
+    },
+    "8501": {
+      "label": "Chainlit UI"
+    },
+    "8080": {
+      "label": "Airflow"
+    },
+    "6333": {
+      "label": "Qdrant HTTP"
+    },
+    "6334": {
+      "label": "Qdrant gRPC"
+    },
+    "5432": {
+      "label": "Postgres"
+    },
+    "11434": {
+      "label": "Ollama"
+    }
+  },
+  "postCreateCommand": "python -m pip install --upgrade pip && python -m pip install -r requirements.txt",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "njpwerner.autodocstring",
+        "tamasfe.even-better-toml",
+        "charliermarsh.ruff"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "editor.formatOnSave": true,
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.fixAll": "always",
+            "source.organizeImports": "always"
+          }
+        },
+        "ruff.lint.run": "onSave",
+        "python.analysis.typeCheckingMode": "basic"
+      }
+    }
+  }
+}

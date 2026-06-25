@@ -1,0 +1,20 @@
+# Git
+.git
+.gitignore
+
+# Python caches and virtual envs
+__pycache__
+*.pyc
+.venv
+venv
+env
+
+# Local outputs
+evaluation/latest_report.json
+
+# Editor and OS artifacts
+.vscode
+.DS_Store
+
+# Docker local persistence
+.devcontainer/volumes
