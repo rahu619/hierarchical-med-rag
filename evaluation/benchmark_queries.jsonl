@@ -1,3 +1,25 @@
 {"id":"q1","query":"early kidney injury biomarkers","expected_pmids":["00000001"]}
 {"id":"q2","query":"critical care mortality risk","expected_pmids":["00000001"]}
 {"id":"q3","query":"risk stratification intervention timing","expected_pmids":["00000001"]}
+{"id":"q4","query":"AKI risk prediction in intensive care","expected_pmids":["00000001"]}
+{"id":"q5","query":"biomarker guided triage for critically ill adults","expected_pmids":["00000001"]}
+{"id":"q6","query":"early detection markers for renal injury","expected_pmids":["00000001"]}
+{"id":"q7","query":"timing of intervention after risk stratification","expected_pmids":["00000001"]}
+{"id":"q8","query":"prognostic indicators for ICU mortality","expected_pmids":["00000001"]}
+{"id":"q9","query":"renal dysfunction warning signals in critical care","expected_pmids":["00000001"]}
+{"id":"q10","query":"clinical utility of kidney injury biomarkers","expected_pmids":["00000001"]}
+{"id":"q11","query":"patient outcomes after early risk classification","expected_pmids":["00000001"]}
+{"id":"q12","query":"decision support for high risk ICU patients","expected_pmids":["00000001"]}
+{"id":"q13","query":"critical illness trajectory and mortality risk","expected_pmids":["00000001"]}
+{"id":"q14","query":"evidence for early AKI surveillance strategies","expected_pmids":["00000001"]}
+{"id":"q15","query":"risk scoring approaches in critical care medicine","expected_pmids":["00000001"]}
+{"id":"q16","query":"predictive biomarkers for deterioration in ICU","expected_pmids":["00000001"]}
+{"id":"q17","query":"clinical predictors of adverse renal outcomes","expected_pmids":["00000001"]}
+{"id":"q18","query":"mortality stratification using early biomarkers","expected_pmids":["00000001"]}
+{"id":"q19","query":"which patients benefit from earlier escalation","expected_pmids":["00000001"]}
+{"id":"q20","query":"biomarker informed intervention timing in ICU","expected_pmids":["00000001"]}
+{"id":"q21","query":"high risk subgroup identification in critical illness","expected_pmids":["00000001"]}
+{"id":"q22","query":"renal risk enrichment for intensive care protocols","expected_pmids":["00000001"]}
+{"id":"q23","query":"early warning evidence for kidney related complications","expected_pmids":["00000001"]}
+{"id":"q24","query":"clinical risk communication for mortality reduction","expected_pmids":["00000001"]}
+{"id":"q25","query":"triage prioritization based on biomarker risk signals","expected_pmids":["00000001"]}

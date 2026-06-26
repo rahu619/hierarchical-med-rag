@@ -10,7 +10,6 @@ Flow:
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -19,6 +18,15 @@ from xml.etree import ElementTree as ET
 
 import requests
 from qdrant_client import QdrantClient, models
+from shared_config import (
+    get_embedding_dim,
+    get_embedding_model,
+    get_ollama_url,
+    get_postgres_dsn,
+    get_qdrant_collection,
+    get_qdrant_url,
+)
+from shared_run import log_event, resolve_run_id
 from sqlalchemy import create_engine, text
 
 SAMPLE_XML = """
@@ -64,15 +72,12 @@ class ParentParagraph:
 
 def load_settings() -> Settings:
     return Settings(
-        postgres_dsn=os.getenv(
-            "POSTGRES_DSN",
-            "postgresql+psycopg2://admin:password@postgres:5432/pubmed_rag",
-        ),
-        qdrant_url=os.getenv("QDRANT_URL", "http://qdrant:6333"),
-        qdrant_collection=os.getenv("QDRANT_COLLECTION", "pubmed_child_chunks"),
-        ollama_url=os.getenv("OLLAMA_URL", "http://ollama:11434"),
-        embedding_model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
-        embedding_dim=int(os.getenv("EMBEDDING_DIM", "768")),
+        postgres_dsn=get_postgres_dsn(),
+        qdrant_url=get_qdrant_url(),
+        qdrant_collection=get_qdrant_collection(),
+        ollama_url=get_ollama_url(),
+        embedding_model=get_embedding_model(),
+        embedding_dim=get_embedding_dim(),
     )
 
 
@@ -100,7 +105,24 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Parse and validate only. Do not persist to Postgres or Qdrant.",
     )
+    parser.add_argument(
+        "--run-id",
+        default="",
+        help="Optional run identifier to include in logs.",
+    )
     return parser.parse_args()
+
+
+def make_parent_id(pmid: str, paragraph_index: int) -> str:
+    return f"{pmid}:p{paragraph_index}"
+
+
+def make_child_id(parent_id: str, child_index: int) -> str:
+    return f"{parent_id}:c{child_index}"
+
+
+def make_qdrant_point_id(parent_id: str, child_index: int) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"{parent_id}:{child_index}"))
 
 
 def read_xml(args: argparse.Namespace) -> str:
@@ -142,7 +164,7 @@ def parse_parent_paragraphs(xml_payload: str) -> list[ParentParagraph]:
                 continue
 
             section_title = abstract_node.attrib.get("Label", "")
-            parent_id = f"{pmid}:p{idx}"
+            parent_id = make_parent_id(pmid, idx)
             rows.append(
                 ParentParagraph(
                     parent_id=parent_id,
@@ -186,15 +208,20 @@ def embed_text(settings: Settings, input_text: str) -> list[float]:
     return vector
 
 
-def persist_records(settings: Settings, parents: Iterable[ParentParagraph], dry_run: bool) -> None:
+def persist_records(
+    settings: Settings,
+    parents: Iterable[ParentParagraph],
+    dry_run: bool,
+    run_id: str,
+) -> None:
     parent_list = list(parents)
     child_count = sum(len(split_sentences(parent.paragraph_text)) for parent in parent_list)
 
-    print(f"[info] parents={len(parent_list)}")
-    print(f"[info] children={child_count}")
+    log_event(run_id, "info", f"parents={len(parent_list)}")
+    log_event(run_id, "info", f"children={child_count}")
 
     if dry_run:
-        print("[dry-run] Skipping writes to Postgres, Ollama, and Qdrant.")
+        log_event(run_id, "dry-run", "Skipping writes to Postgres, Ollama, and Qdrant.")
         return
 
     engine = create_engine(settings.postgres_dsn, future=True)
@@ -240,7 +267,7 @@ def persist_records(settings: Settings, parents: Iterable[ParentParagraph], dry_
 
             points: list[models.PointStruct] = []
             for child_index, child_text in enumerate(split_sentences(parent.paragraph_text)):
-                point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{parent.parent_id}:{child_index}"))
+                point_id = make_qdrant_point_id(parent.parent_id, child_index)
                 vector = embed_text(settings, child_text)
 
                 conn.execute(
@@ -267,7 +294,7 @@ def persist_records(settings: Settings, parents: Iterable[ParentParagraph], dry_
                         """
                     ),
                     {
-                        "child_id": f"{parent.parent_id}:c{child_index}",
+                        "child_id": make_child_id(parent.parent_id, child_index),
                         "parent_id": parent.parent_id,
                         "child_index": child_index,
                         "qdrant_point_id": point_id,
@@ -299,19 +326,22 @@ def persist_records(settings: Settings, parents: Iterable[ParentParagraph], dry_
 
         conn.commit()
 
-    print("[ok] Ingestion completed successfully.")
+    log_event(run_id, "ok", "Ingestion completed successfully.")
 
 
 def main() -> None:
     args = parse_args()
     settings = load_settings()
+    run_id = resolve_run_id(args.run_id)
+    log_event(run_id, "run", "Starting PubMed XML ingestion workflow.")
     xml_payload = read_xml(args)
     parents = parse_parent_paragraphs(xml_payload)
 
     if not parents:
         raise ValueError("No PubMed abstracts found in input XML payload.")
 
-    persist_records(settings, parents, dry_run=args.dry_run)
+    persist_records(settings, parents, dry_run=args.dry_run, run_id=run_id)
+    log_event(run_id, "ok", "Ingestion workflow completed.")
 
 
 if __name__ == "__main__":

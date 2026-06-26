@@ -266,7 +266,7 @@ Outcome:
 - Qdrant points exist but poor reconstruction:
   - likely parent-child mapping issue
 
-## 7. Safe First Tasks for a Junior Engineer
+## 7. Safe First Tasks
 
 1. Run dry-run ingest and verify parsed counts.
 2. Run full ingest with sample XML and validate row/point counts.

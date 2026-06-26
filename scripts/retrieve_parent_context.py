@@ -10,12 +10,20 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from dataclasses import dataclass
 from typing import Any
 
 import requests
 from qdrant_client import QdrantClient
+from shared_config import (
+    get_embedding_dim,
+    get_embedding_model,
+    get_ollama_url,
+    get_postgres_dsn,
+    get_qdrant_collection,
+    get_qdrant_url,
+)
+from shared_run import log_event, resolve_run_id
 from sqlalchemy import create_engine, text
 
 
@@ -31,15 +39,12 @@ class Settings:
 
 def load_settings() -> Settings:
     return Settings(
-        postgres_dsn=os.getenv(
-            "POSTGRES_DSN",
-            "postgresql+psycopg2://admin:password@postgres:5432/pubmed_rag",
-        ),
-        qdrant_url=os.getenv("QDRANT_URL", "http://qdrant:6333"),
-        qdrant_collection=os.getenv("QDRANT_COLLECTION", "pubmed_child_chunks"),
-        ollama_url=os.getenv("OLLAMA_URL", "http://ollama:11434"),
-        embedding_model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
-        embedding_dim=int(os.getenv("EMBEDDING_DIM", "768")),
+        postgres_dsn=get_postgres_dsn(),
+        qdrant_url=get_qdrant_url(),
+        qdrant_collection=get_qdrant_collection(),
+        ollama_url=get_ollama_url(),
+        embedding_model=get_embedding_model(),
+        embedding_dim=get_embedding_dim(),
     )
 
 
@@ -57,6 +62,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=5,
         help="Number of top child vector hits to retrieve.",
+    )
+    parser.add_argument(
+        "--run-id",
+        default="",
+        help="Optional run identifier to include in logs.",
     )
     return parser.parse_args()
 
@@ -116,7 +126,12 @@ def fetch_parent_rows(settings: Settings, parent_ids: list[str]) -> dict[str, di
     return parent_map
 
 
-def retrieve(settings: Settings, query_text: str, top_k: int) -> dict[str, Any]:
+def retrieve(
+    settings: Settings,
+    query_text: str,
+    top_k: int,
+    run_id: str = "",
+) -> dict[str, Any]:
     query_vector = embed_query(settings, query_text)
     qdrant = QdrantClient(url=settings.qdrant_url, timeout=60)
 
@@ -176,20 +191,30 @@ def retrieve(settings: Settings, query_text: str, top_k: int) -> dict[str, Any]:
             }
         )
 
-    return {
+    result = {
         "query": query_text,
         "top_k": top_k,
         "embedding_model": settings.embedding_model,
         "child_hits": child_hits,
         "parent_contexts": parent_contexts,
     }
+    if run_id:
+        log_event(
+            run_id,
+            "info",
+            f"retrieved child_hits={len(child_hits)} parent_contexts={len(parent_contexts)}",
+        )
+    return result
 
 
 def main() -> None:
     args = parse_args()
     settings = load_settings()
-    result = retrieve(settings, query_text=args.query, top_k=args.top_k)
+    run_id = resolve_run_id(args.run_id)
+    log_event(run_id, "run", f"Starting retrieval for query={args.query!r} top_k={args.top_k}")
+    result = retrieve(settings, query_text=args.query, top_k=args.top_k, run_id=run_id)
     print(json.dumps(result, indent=2, default=str))
+    log_event(run_id, "ok", "Retrieval workflow completed.")
 
 
 if __name__ == "__main__":

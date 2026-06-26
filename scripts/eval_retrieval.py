@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from retrieve_parent_context import load_settings, retrieve
+from shared_run import log_event, resolve_run_id
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,6 +34,11 @@ def parse_args() -> argparse.Namespace:
         "--output-file",
         default="",
         help="Optional path to save JSON evaluation report.",
+    )
+    parser.add_argument(
+        "--run-id",
+        default="",
+        help="Optional run identifier to include in logs.",
     )
     return parser.parse_args()
 
@@ -105,7 +111,7 @@ def compute_query_metrics(
     }
 
 
-def evaluate(benchmark_rows: list[dict[str, Any]], top_k: int) -> dict[str, Any]:
+def evaluate(benchmark_rows: list[dict[str, Any]], top_k: int, run_id: str = "") -> dict[str, Any]:
     settings = load_settings()
     query_reports: list[dict[str, Any]] = []
 
@@ -114,7 +120,7 @@ def evaluate(benchmark_rows: list[dict[str, Any]], top_k: int) -> dict[str, Any]
         expected_pmids = {str(item) for item in row.get("expected_pmids", [])}
         expected_parent_ids = {str(item) for item in row.get("expected_parent_ids", [])}
 
-        retrieval_result = retrieve(settings, query_text=query, top_k=top_k)
+        retrieval_result = retrieve(settings, query_text=query, top_k=top_k, run_id=run_id)
         query_report = compute_query_metrics(
             retrieval_result,
             expected_pmids=expected_pmids,
@@ -148,12 +154,14 @@ def evaluate(benchmark_rows: list[dict[str, Any]], top_k: int) -> dict[str, Any]
 
 def main() -> None:
     args = parse_args()
+    run_id = resolve_run_id(args.run_id)
+    log_event(run_id, "run", f"Starting retrieval evaluation top_k={args.top_k}")
     benchmark_path = Path(args.benchmark_file)
     if not benchmark_path.exists():
         raise FileNotFoundError(f"Benchmark file not found: {benchmark_path}")
 
     rows = load_benchmark_rows(benchmark_path)
-    report = evaluate(rows, top_k=args.top_k)
+    report = evaluate(rows, top_k=args.top_k, run_id=run_id)
 
     report_text = json.dumps(report, indent=2)
     print(report_text)
@@ -162,6 +170,7 @@ def main() -> None:
         output_path = Path(args.output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(report_text + "\n", encoding="utf-8")
+    log_event(run_id, "ok", "Retrieval evaluation completed.")
 
 
 if __name__ == "__main__":

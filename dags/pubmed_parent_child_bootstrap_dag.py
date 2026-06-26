@@ -26,8 +26,6 @@ with DAG(
     run_bootstrap = BashOperator(
         task_id="run_parent_child_scaffold",
         bash_command=(
-            "python -m pip install --no-cache-dir "
-            "qdrant-client psycopg2-binary sqlalchemy requests >/dev/null && "
             "python /opt/airflow/scripts/bootstrap_parent_child_chunks.py "
             "--dry-run"
         ),

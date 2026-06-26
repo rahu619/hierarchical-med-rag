@@ -106,7 +106,16 @@ services:
     #           capabilities: [gpu]
 
   airflow-standalone:
-    image: apache/airflow:latest
+    build:
+      context: ..
+      dockerfile_inline: |
+        FROM apache/airflow:latest
+
+        USER root
+        RUN python -m pip install --no-cache-dir \
+            qdrant-client==1.12.1 \
+            psycopg2-binary==2.9.10
+        USER airflow
     container_name: pubmed-rag-airflow
     restart: unless-stopped
     user: "${AIRFLOW_UID:-50000}:0"

@@ -8,11 +8,17 @@ This script is intentionally minimal and production-oriented:
 from __future__ import annotations
 
 import argparse
-import os
 from dataclasses import dataclass
 
 import requests
 from qdrant_client import QdrantClient, models
+from shared_config import (
+    get_embedding_dim,
+    get_postgres_dsn,
+    get_qdrant_collection,
+    get_qdrant_url,
+)
+from shared_run import log_event, resolve_run_id
 from sqlalchemy import create_engine, text
 
 SCHEMA_VERSION = "2026_06_25_001"
@@ -28,23 +34,24 @@ class Settings:
 
 def load_settings() -> Settings:
     return Settings(
-        postgres_dsn=os.getenv(
-            "POSTGRES_DSN",
-            "postgresql+psycopg2://admin:password@postgres:5432/pubmed_rag",
-        ),
-        qdrant_url=os.getenv("QDRANT_URL", "http://qdrant:6333"),
-        qdrant_collection=os.getenv("QDRANT_COLLECTION", "pubmed_child_chunks"),
-        embedding_dim=int(os.getenv("EMBEDDING_DIM", "768")),
+        postgres_dsn=get_postgres_dsn(),
+        qdrant_url=get_qdrant_url(),
+        qdrant_collection=get_qdrant_collection(),
+        embedding_dim=get_embedding_dim(),
     )
 
 
-def init_postgres(settings: Settings, dry_run: bool) -> None:
-    print(f"[info] postgres_dsn={settings.postgres_dsn}")
+def init_postgres(settings: Settings, dry_run: bool, run_id: str) -> None:
+    log_event(run_id, "info", f"postgres_dsn={settings.postgres_dsn}")
 
     if dry_run:
-        print("[dry-run] Skipping Postgres writes. Connectivity checks only.")
+        log_event(run_id, "dry-run", "Skipping Postgres writes. Connectivity checks only.")
     else:
-        print("[run] Initializing migration metadata and parent-child schema in Postgres.")
+        log_event(
+            run_id,
+            "run",
+            "Initializing migration metadata and parent-child schema in Postgres.",
+        )
 
     engine = create_engine(settings.postgres_dsn, future=True)
     with engine.connect() as conn:
@@ -118,13 +125,13 @@ def init_postgres(settings: Settings, dry_run: bool) -> None:
             )
             conn.commit()
 
-    print("[ok] Postgres connectivity check succeeded.")
+    log_event(run_id, "ok", "Postgres connectivity check succeeded.")
 
 
-def init_qdrant(settings: Settings, dry_run: bool) -> None:
-    print(f"[info] qdrant_url={settings.qdrant_url}")
-    print(f"[info] qdrant_collection={settings.qdrant_collection}")
-    print(f"[info] embedding_dim={settings.embedding_dim}")
+def init_qdrant(settings: Settings, dry_run: bool, run_id: str) -> None:
+    log_event(run_id, "info", f"qdrant_url={settings.qdrant_url}")
+    log_event(run_id, "info", f"qdrant_collection={settings.qdrant_collection}")
+    log_event(run_id, "info", f"embedding_dim={settings.embedding_dim}")
 
     resp = requests.get(f"{settings.qdrant_url}/healthz", timeout=10)
     resp.raise_for_status()
@@ -133,7 +140,11 @@ def init_qdrant(settings: Settings, dry_run: bool) -> None:
     if dry_run:
         collections = client.get_collections().collections
         collection_names = [collection.name for collection in collections]
-        print(f"[ok] Qdrant health check succeeded. collections={collection_names}")
+        log_event(
+            run_id,
+            "ok",
+            f"Qdrant health check succeeded. collections={collection_names}",
+        )
         return
 
     if not client.collection_exists(collection_name=settings.qdrant_collection):
@@ -144,7 +155,7 @@ def init_qdrant(settings: Settings, dry_run: bool) -> None:
                 distance=models.Distance.COSINE,
             ),
         )
-        print("[ok] Qdrant collection created.")
+        log_event(run_id, "ok", "Qdrant collection created.")
         return
 
     collection = client.get_collection(collection_name=settings.qdrant_collection)
@@ -154,12 +165,12 @@ def init_qdrant(settings: Settings, dry_run: bool) -> None:
             "Existing Qdrant collection dimension mismatch: "
             f"found {existing_dim}, expected {settings.embedding_dim}."
         )
-    print("[ok] Qdrant collection already exists with matching embedding dimension.")
+    log_event(run_id, "ok", "Qdrant collection already exists with matching embedding dimension.")
 
 
-def bootstrap_schema(settings: Settings, dry_run: bool) -> None:
-    init_postgres(settings, dry_run=dry_run)
-    init_qdrant(settings, dry_run=dry_run)
+def bootstrap_schema(settings: Settings, dry_run: bool, run_id: str) -> None:
+    init_postgres(settings, dry_run=dry_run, run_id=run_id)
+    init_qdrant(settings, dry_run=dry_run, run_id=run_id)
 
 
 def parse_args() -> argparse.Namespace:
@@ -171,13 +182,21 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run connectivity checks without creating tables.",
     )
+    parser.add_argument(
+        "--run-id",
+        default="",
+        help="Optional run identifier to include in logs.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     settings = load_settings()
-    bootstrap_schema(settings, dry_run=args.dry_run)
+    run_id = resolve_run_id(args.run_id)
+    log_event(run_id, "run", "Starting bootstrap workflow.")
+    bootstrap_schema(settings, dry_run=args.dry_run, run_id=run_id)
+    log_event(run_id, "ok", "Bootstrap workflow completed.")
 
 
 if __name__ == "__main__":

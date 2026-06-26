@@ -17,8 +17,6 @@ with DAG(
     ensure_bootstrap = BashOperator(
         task_id="ensure_storage_bootstrap",
         bash_command=(
-            "python -m pip install --no-cache-dir "
-            "qdrant-client psycopg2-binary sqlalchemy requests >/dev/null && "
             "python /opt/airflow/scripts/bootstrap_parent_child_chunks.py"
         ),
     )
@@ -26,8 +24,6 @@ with DAG(
     ingest_sample = BashOperator(
         task_id="ingest_sample_pubmed_xml",
         bash_command=(
-            "python -m pip install --no-cache-dir "
-            "qdrant-client psycopg2-binary sqlalchemy requests >/dev/null && "
             "python /opt/airflow/scripts/ingest_pubmed_xml.py "
             "--use-sample"
         ),
