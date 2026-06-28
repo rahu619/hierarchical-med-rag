@@ -26,6 +26,7 @@ from shared_config import (
     get_qdrant_collection,
     get_qdrant_url,
 )
+from shared_embeddings import request_embedding
 from shared_run import log_event, resolve_run_id
 from sqlalchemy import create_engine, text
 
@@ -185,27 +186,13 @@ def split_sentences(paragraph: str) -> list[str]:
 
 
 def embed_text(settings: Settings, input_text: str) -> list[float]:
-    resp = requests.post(
-        f"{settings.ollama_url}/api/embeddings",
-        json={"model": settings.embedding_model, "prompt": input_text},
-        timeout=60,
+    return request_embedding(
+        ollama_url=settings.ollama_url,
+        model=settings.embedding_model,
+        input_text=input_text,
+        expected_dim=settings.embedding_dim,
+        error_prefix="Ollama embedding request failed",
     )
-    if resp.status_code >= 400:
-        raise RuntimeError(
-            "Ollama embedding request failed. Ensure model "
-            f"'{settings.embedding_model}' is available in Ollama. "
-            "Use 'ollama pull <model>' in the Ollama environment and retry. "
-            f"Status={resp.status_code} Body={resp.text[:300]}"
-        )
-    payload = resp.json()
-    vector = payload.get("embedding")
-    if not isinstance(vector, list) or not vector:
-        raise ValueError("Ollama embedding response did not include a valid vector.")
-    if len(vector) != settings.embedding_dim:
-        raise ValueError(
-            f"Embedding dimension mismatch: got {len(vector)}, expected {settings.embedding_dim}."
-        )
-    return vector
 
 
 def persist_records(

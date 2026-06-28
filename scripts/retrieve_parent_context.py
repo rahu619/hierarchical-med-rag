@@ -13,7 +13,6 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-import requests
 from qdrant_client import QdrantClient
 from shared_config import (
     get_embedding_dim,
@@ -23,8 +22,9 @@ from shared_config import (
     get_qdrant_collection,
     get_qdrant_url,
 )
+from shared_embeddings import request_embedding
 from shared_run import log_event, resolve_run_id
-from sqlalchemy import create_engine, text
+from sqlalchemy import bindparam, create_engine, text
 
 
 @dataclass
@@ -72,27 +72,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def embed_query(settings: Settings, query_text: str) -> list[float]:
-    resp = requests.post(
-        f"{settings.ollama_url}/api/embeddings",
-        json={"model": settings.embedding_model, "prompt": query_text},
-        timeout=60,
+    return request_embedding(
+        ollama_url=settings.ollama_url,
+        model=settings.embedding_model,
+        input_text=query_text,
+        expected_dim=settings.embedding_dim,
+        error_prefix="Query embedding failed",
     )
-    if resp.status_code >= 400:
-        raise RuntimeError(
-            "Query embedding failed. Ensure Ollama is running and model "
-            f"'{settings.embedding_model}' is pulled. "
-            f"Status={resp.status_code} Body={resp.text[:300]}"
-        )
-    payload = resp.json()
-    vector = payload.get("embedding")
-    if not isinstance(vector, list) or not vector:
-        raise ValueError("Embedding response did not include a valid query vector.")
-    if len(vector) != settings.embedding_dim:
-        raise ValueError(
-            "Embedding dimension mismatch: "
-            f"got {len(vector)} expected {settings.embedding_dim}."
-        )
-    return vector
 
 
 def fetch_parent_rows(settings: Settings, parent_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -113,15 +99,14 @@ def fetch_parent_rows(settings: Settings, parent_ids: list[str]) -> dict[str, di
             paragraph_text,
             created_at
         FROM parent_documents
-        WHERE parent_id = :parent_id
+        WHERE parent_id IN :parent_ids
         """
-    )
+    ).bindparams(bindparam("parent_ids", expanding=True))
     with engine.connect() as conn:
-        for parent_id in parent_ids:
-            row = conn.execute(sql, {"parent_id": parent_id}).mappings().first()
-            if row is None:
-                continue
-            parent_map[parent_id] = dict(row)
+        rows = conn.execute(sql, {"parent_ids": parent_ids}).mappings().all()
+
+    for row in rows:
+        parent_map[str(row["parent_id"])] = dict(row)
 
     return parent_map
 
